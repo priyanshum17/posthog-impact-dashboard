@@ -1,9 +1,7 @@
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-import subprocess
-import sys
-from datetime import datetime
+import os
 
 st.set_page_config(page_title="Engineering Impact Dashboard", page_icon="📊", layout="wide")
 
@@ -83,28 +81,7 @@ scores_path = "data/engineer_scores.csv"
 st.markdown('<div class="title">Engineering Impact — PostHog</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Last 90 days • Impact = shipping changes + unblocking others (measured via PR and issue activity)</div>', unsafe_allow_html=True)
 
-days_back = st.number_input("Days Back", min_value=7, max_value=180, value=90, step=7)
-run_btn = st.button("Get Results", use_container_width=True)
-
-last_run = st.session_state.get("last_run")
-if last_run:
-    st.caption(f"Last run: {last_run}")
-
-if run_btn:
-    with st.status("Running data pipeline...", expanded=True) as status:
-        try:
-            status.write("Fetching data from GitHub...")
-            subprocess.run(
-                [sys.executable, "fetch_data.py", "--days-back", str(days_back)],
-                check=True,
-            )
-            status.write("Computing metrics...")
-            subprocess.run([sys.executable, "compute_metrics.py"], check=True)
-            st.session_state["last_run"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-            status.update(label="Pipeline complete", state="complete")
-        except subprocess.CalledProcessError as exc:
-            status.update(label="Pipeline failed", state="error")
-            st.error(f"Pipeline failed. Check logs in terminal. Exit code: {exc.returncode}")
+st.caption("Static mode: using precomputed CSVs committed in the repo.")
 
 try:
     df = pd.read_csv(scores_path)
@@ -116,8 +93,6 @@ if df.empty:
     st.warning("No data available. Check your fetch script and API access.")
     st.stop()
 
-top5 = df.sort_values("impact_score", ascending=False).head(5)
-
 st.markdown("**Impact Definition**")
 st.markdown(
     """
@@ -126,7 +101,7 @@ We capture this with a blend of PR throughput and issue lifecycle activity in th
     """
 )
 
-# Ensure numeric columns are numeric for plotting
+# Ensure numeric columns are numeric for plotting and ranking
 numeric_cols = [
     "impact_score",
     "prs_merged",
@@ -139,8 +114,11 @@ numeric_cols = [
 for col in numeric_cols:
     if col in df.columns:
         df[col] = pd.to_numeric(df[col], errors="coerce")
-        top5[col] = pd.to_numeric(top5[col], errors="coerce")
-top5 = top5.fillna(0)
+df = df.fillna(0)
+top5 = df.sort_values("impact_score", ascending=False).head(5)
+
+if top5[numeric_cols].sum().sum() == 0:
+    st.warning("All metrics are zero. This usually means the fetch step did not return data.")
 
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 with kpi1:
@@ -171,22 +149,67 @@ st.markdown('<div class="section-title">Why These Rankings</div>', unsafe_allow_
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    fig = px.bar(top5, x="engineer", y="prs_merged", title="PRs Merged", color="engineer")
-    fig.update_layout(showlegend=False, height=320, margin=dict(l=10, r=10, t=40, b=10))
+    fig = px.bar(
+        top5,
+        x="engineer",
+        y="prs_merged",
+        title="PRs Merged",
+        color="engineer",
+        text="prs_merged",
+        color_discrete_sequence=px.colors.qualitative.Set2,
+    )
+    max_y = float(top5["prs_merged"].max()) if "prs_merged" in top5.columns else 0.0
+    fig.update_traces(textposition="outside", cliponaxis=False)
+    fig.update_layout(
+        showlegend=False,
+        height=320,
+        margin=dict(l=10, r=10, t=40, b=10),
+        yaxis_range=[0, max(1.0, max_y * 1.2)],
+    )
     st.plotly_chart(fig, use_container_width=True)
 
 with col2:
     if "prs_closed" in top5.columns:
-        fig = px.bar(top5, x="engineer", y="prs_closed", title="PRs Closed", color="engineer")
-        fig.update_layout(showlegend=False, height=320, margin=dict(l=10, r=10, t=40, b=10))
+        fig = px.bar(
+            top5,
+            x="engineer",
+            y="prs_closed",
+            title="PRs Closed",
+            color="engineer",
+            text="prs_closed",
+            color_discrete_sequence=px.colors.qualitative.Set2,
+        )
+        max_y = float(top5["prs_closed"].max())
+        fig.update_traces(textposition="outside", cliponaxis=False)
+        fig.update_layout(
+            showlegend=False,
+            height=320,
+            margin=dict(l=10, r=10, t=40, b=10),
+            yaxis_range=[0, max(1.0, max_y * 1.2)],
+        )
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.caption("No PR closed data available.")
 
 with col3:
     if "issues_closed" in top5.columns:
-        fig = px.bar(top5, x="engineer", y="issues_closed", title="Issues Closed (by Opener)", color="engineer")
-        fig.update_layout(showlegend=False, height=320, margin=dict(l=10, r=10, t=40, b=10))
+        fig = px.bar(
+            top5,
+            x="engineer",
+            y="issues_closed",
+            title="Issues Closed (by Opener)",
+            color="engineer",
+            text="issues_closed",
+            color_discrete_sequence=px.colors.qualitative.Set2,
+        )
+        max_y = float(top5["issues_closed"].max())
+        fig.update_traces(textposition="outside", cliponaxis=False)
+        fig.update_layout(
+            showlegend=False,
+            height=320,
+            margin=dict(l=10, r=10, t=40, b=10),
+            yaxis_range=[0, max(1.0, max_y * 1.2)],
+        )
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.caption("No issues data available.")
