@@ -126,6 +126,22 @@ We capture this with a blend of PR throughput and issue lifecycle activity in th
     """
 )
 
+# Ensure numeric columns are numeric for plotting
+numeric_cols = [
+    "impact_score",
+    "prs_merged",
+    "prs_closed",
+    "issues_closed",
+    "prs_opened",
+    "pr_comments",
+    "issues_opened",
+]
+for col in numeric_cols:
+    if col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+        top5[col] = pd.to_numeric(top5[col], errors="coerce")
+top5 = top5.fillna(0)
+
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 with kpi1:
     st.markdown('<div class="kpi"><div class="kpi-label">Top Engineer</div><div class="kpi-value">{}</div></div>'.format(top5.iloc[0]["engineer"]), unsafe_allow_html=True)
