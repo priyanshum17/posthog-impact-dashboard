@@ -4,3 +4,4 @@ streamlit
 plotly
 altair==4.2.2
 pyarrow==12.0.1
+numpy<2
